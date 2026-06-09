@@ -10,7 +10,7 @@ app.use(express.json());
 app.use(cors());
 
 const port = process.env.PORT;
-const { MongoClient, ServerApiVersion } = require("mongodb");
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const uri = process.env.MONGO_DB_URI;
 
 const client = new MongoClient(uri, {
@@ -28,7 +28,9 @@ async function run() {
 		// Database and data collections
 		const database = client.db("hireloop_db");
 		const jobsCollection = database.collection("jobs");
+		const companyCollection = database.collection("companies");
 
+		/* Jobs Related APIs */
 		app.get("/api/jobs", async (req, res) => {
 			const query = {};
 			if (req.query.companyId) {
@@ -43,10 +45,48 @@ async function run() {
 			res.json(result);
 		});
 
+		// Get Job By ID
+		app.get("/api/jobs/:id", async (req, res) => {
+			const id = req.params.id;
+			const query = {
+				_id: new ObjectId(id),
+			};
+			const result = await jobsCollection.findOne(query);
+			console.log(result);
+			res.json(result);
+		});
+
 		// New job creating API
 		app.post("/api/jobs", async (req, res) => {
 			const jobData = req.body;
-			const result = await jobsCollection.insertOne(jobData);
+			const newJobData = {
+				...jobData,
+				createdAt: new Date(),
+			};
+			const result = await jobsCollection.insertOne(newJobData);
+			res.json(result);
+		});
+
+		/* Company related APIs */
+		// Get company data
+		app.get("/api/my/companies", async (req, res) => {
+			const query = {};
+			if (req.query.recruiterId) {
+				query.recruiterId = req.query.recruiterId;
+			}
+			const result = await companyCollection.findOne(query);
+
+			res.send(result || {});
+		});
+
+		// Register a company api
+		app.post("/api/companies", async (req, res) => {
+			const companyData = req.body;
+			const newCompanyData = {
+				...companyData,
+				createdAt: new Date(),
+			};
+			const result = await companyCollection.insertOne(newCompanyData);
 			res.json(result);
 		});
 
