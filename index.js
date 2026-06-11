@@ -29,6 +29,10 @@ async function run() {
 		const database = client.db("hireloop_db");
 		const jobsCollection = database.collection("jobs");
 		const companyCollection = database.collection("companies");
+		const applicationsCollection = database.collection("applications");
+		const planCollection = database.collection("plans");
+		const subscriptionCollection = database.collection("subscriptions");
+		const usersCollection = database.collection("user");
 
 		/* Jobs Related APIs */
 		app.get("/api/jobs", async (req, res) => {
@@ -52,7 +56,6 @@ async function run() {
 				_id: new ObjectId(id),
 			};
 			const result = await jobsCollection.findOne(query);
-			console.log(result);
 			res.json(result);
 		});
 
@@ -64,6 +67,34 @@ async function run() {
 				createdAt: new Date(),
 			};
 			const result = await jobsCollection.insertOne(newJobData);
+			res.json(result);
+		});
+
+		/* Job Applications Related */
+		// Get applications data
+		app.get("/api/applications", async (req, res) => {
+			const query = {};
+			if (req.query.applicantId) {
+				query.applicantId = req.query.applicantId;
+			}
+			if (req.query.jobId) {
+				query.jobId = req.query.jobId;
+			}
+			const cursor = applicationsCollection.find(query);
+			const result = await cursor.toArray();
+			res.json(result);
+		});
+
+		// Create new job application
+		app.post("/api/applications", async (req, res) => {
+			const application = req.body;
+			const newApplication = {
+				...application,
+				createdAt: new Date(),
+			};
+
+			const result =
+				await applicationsCollection.insertOne(newApplication);
 			res.json(result);
 		});
 
@@ -88,6 +119,41 @@ async function run() {
 			};
 			const result = await companyCollection.insertOne(newCompanyData);
 			res.json(result);
+		});
+
+		/* Plan Collection related APIs */
+		app.get("/api/plans", async (req, res) => {
+			const query = {};
+			if (req.query.planId) {
+				query.planId = req.query.planId;
+			}
+			const result = await planCollection.findOne(query);
+			res.json(result);
+		});
+
+		/* Subscription & Update User Plan related APIs */
+		app.post("/api/subscriptions", async (req, res) => {
+			const subscriptionData = req.body;
+			const subsNewData = {
+				...subscriptionData,
+				createdAt: new Date(),
+			};
+			const result = await subscriptionCollection.insertOne(subsNewData);
+
+			// Update User Plan
+			const filter = { email: subscriptionData.email };
+			const updatePlan = {
+				$set: {
+					plan: subscriptionData.planId,
+				},
+			};
+
+			const updatePlanResult = await usersCollection.updateOne(
+				filter,
+				updatePlan,
+			);
+
+			res.json(updatePlanResult);
 		});
 
 		// Send a ping to confirm a successful connection
