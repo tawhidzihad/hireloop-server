@@ -11,6 +11,7 @@ app.use(cors());
 
 const port = process.env.PORT;
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
+const { skip } = require("node:test");
 const uri = process.env.MONGO_DB_URI;
 
 const client = new MongoClient(uri, {
@@ -99,7 +100,7 @@ async function run() {
 		});
 
 		/* Company related APIs */
-		// Get company data
+		// Get my company data
 		app.get("/api/my/companies", async (req, res) => {
 			const query = {};
 			if (req.query.recruiterId) {
@@ -110,6 +111,27 @@ async function run() {
 			res.send(result || {});
 		});
 
+		// app.get("/api/companies/advance", async (req, res) => {
+		// 	const pipeline = [{ $skip: 5 }, { $limit: 2 }];
+		// 	const cursor = companyCollection.aggregate(pipeline);
+		// 	const result = await cursor.toArray();
+		// 	res.json(result);
+		// });
+
+		app.get("/api/companies", async (req, res) => {
+			const cursor = await companyCollection.find();
+			const companies = await cursor.toArray();
+
+			for (const company of companies) {
+				const filter = {
+					companyId: company._id.toString(),
+				};
+				const jobCount = await jobsCollection.countDocuments(filter);
+				company.jobCount = jobCount;
+			}
+			res.json(companies);
+		});
+
 		// Register a company api
 		app.post("/api/companies", async (req, res) => {
 			const companyData = req.body;
@@ -118,6 +140,27 @@ async function run() {
 				createdAt: new Date(),
 			};
 			const result = await companyCollection.insertOne(newCompanyData);
+			res.json(result);
+		});
+
+		// Update company status
+		app.patch("/api/companies/:id", async (req, res) => {
+			const { id } = req.params;
+			const updatedCompany = req.body;
+			const filter = {
+				_id: new ObjectId(id),
+			};
+			const updatedStatus = {
+				$set: {
+					status: updatedCompany.status,
+				},
+			};
+
+			const result = await companyCollection.updateOne(
+				filter,
+				updatedStatus,
+			);
+
 			res.json(result);
 		});
 
