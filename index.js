@@ -34,6 +34,55 @@ async function run() {
 		const planCollection = database.collection("plans");
 		const subscriptionCollection = database.collection("subscriptions");
 		const usersCollection = database.collection("user");
+		const sessionCollection = database.collection("session");
+
+		/* Middleware verifications */
+		const verifyToken = async (req, res, next) => {
+			const authHeader = req.headers?.authorization;
+
+			if (!authHeader) {
+				return res.status(401).json({ message: "unauthorized access" });
+			}
+
+			const token = authHeader.split(" ")[1];
+
+			if (!token) {
+				return res.status(401).json({ message: "unauthorized access" });
+			}
+
+			const tokenQuery = { token: token };
+			const session = await sessionCollection.findOne(tokenQuery);
+			const userId = session?.userId;
+			const user = await usersCollection.findOne({ _id: userId });
+
+			req.user = user;
+
+			next();
+		};
+
+		// Verify seeker middleware
+		const verifySeeker = async (req, res, next) => {
+			if (req?.user?.role !== "seeker") {
+				return res.status(403).json({ message: "forbidden access" });
+			}
+			next();
+		};
+
+		// Verify admin middleware
+		const verifyAdmin = async (req, res, next) => {
+			if (req.user?.role !== "admin") {
+				return res.status(403).json({ message: "forbidden access" });
+			}
+			next();
+		};
+
+		// Verify recruiter middleware
+		const verifyRecruiter = async (req, res, next) => {
+			if (req.user?.role !== "recruiter") {
+				return res.status(403).json({ message: "forbidden access" });
+			}
+			next();
+		};
 
 		/* Jobs Related APIs */
 		app.get("/api/jobs", async (req, res) => {
@@ -72,19 +121,30 @@ async function run() {
 		});
 
 		/* Job Applications Related */
-		// Get applications data
-		app.get("/api/applications", async (req, res) => {
-			const query = {};
-			if (req.query.applicantId) {
-				query.applicantId = req.query.applicantId;
-			}
-			if (req.query.jobId) {
-				query.jobId = req.query.jobId;
-			}
-			const cursor = applicationsCollection.find(query);
-			const result = await cursor.toArray();
-			res.json(result);
-		});
+		// Get applications data for seeker
+		app.get(
+			"/api/applications",
+			verifyToken,
+			verifySeeker,
+			async (req, res) => {
+				const query = {};
+				if (req.query.applicantId) {
+					query.applicantId = req.query.applicantId;
+
+					if (req.user._id.toString() !== req.query.applicantId) {
+						return res
+							.status(403)
+							.json({ message: "forbidden access" });
+					}
+				}
+				if (req.query.jobId) {
+					query.jobId = req.query.jobId;
+				}
+				const cursor = applicationsCollection.find(query);
+				const result = await cursor.toArray();
+				res.json(result);
+			},
+		);
 
 		// Create new job application
 		app.post("/api/applications", async (req, res) => {
@@ -100,7 +160,7 @@ async function run() {
 		});
 
 		/* Company related APIs */
-		// Get my company data
+		// Get my company data for recruiter
 		app.get("/api/my/companies", async (req, res) => {
 			const query = {};
 			if (req.query.recruiterId) {
@@ -111,58 +171,69 @@ async function run() {
 			res.send(result || {});
 		});
 
-		// app.get("/api/companies/advance", async (req, res) => {
-		// 	const pipeline = [{ $skip: 5 }, { $limit: 2 }];
-		// 	const cursor = companyCollection.aggregate(pipeline);
-		// 	const result = await cursor.toArray();
-		// 	res.json(result);
-		// });
+		// Admin get this company data
+		app.get(
+			"/api/companies",
+			verifyToken,
+			verifyAdmin,
+			async (req, res) => {
+				const cursor = await companyCollection.find();
+				const companies = await cursor.toArray();
 
-		app.get("/api/companies", async (req, res) => {
-			const cursor = await companyCollection.find();
-			const companies = await cursor.toArray();
+				for (const company of companies) {
+					const filter = {
+						companyId: company._id.toString(),
+					};
+					const jobCount =
+						await jobsCollection.countDocuments(filter);
+					company.jobCount = jobCount;
+				}
+				res.json(companies);
+			},
+		);
 
-			for (const company of companies) {
-				const filter = {
-					companyId: company._id.toString(),
+		// Recruiter register a company
+		app.post(
+			"/api/companies",
+			verifyToken,
+			verifyRecruiter,
+			async (req, res) => {
+				const companyData = req.body;
+				const newCompanyData = {
+					...companyData,
+					createdAt: new Date(),
 				};
-				const jobCount = await jobsCollection.countDocuments(filter);
-				company.jobCount = jobCount;
-			}
-			res.json(companies);
-		});
+				const result =
+					await companyCollection.insertOne(newCompanyData);
+				res.json(result);
+			},
+		);
 
-		// Register a company api
-		app.post("/api/companies", async (req, res) => {
-			const companyData = req.body;
-			const newCompanyData = {
-				...companyData,
-				createdAt: new Date(),
-			};
-			const result = await companyCollection.insertOne(newCompanyData);
-			res.json(result);
-		});
+		// Update company status for admin
+		app.patch(
+			"/api/companies/:id",
+			verifyToken,
+			verifyAdmin,
+			async (req, res) => {
+				const { id } = req.params;
+				const updatedCompany = req.body;
+				const filter = {
+					_id: new ObjectId(id),
+				};
+				const updatedStatus = {
+					$set: {
+						status: updatedCompany.status,
+					},
+				};
 
-		// Update company status
-		app.patch("/api/companies/:id", async (req, res) => {
-			const { id } = req.params;
-			const updatedCompany = req.body;
-			const filter = {
-				_id: new ObjectId(id),
-			};
-			const updatedStatus = {
-				$set: {
-					status: updatedCompany.status,
-				},
-			};
+				const result = await companyCollection.updateOne(
+					filter,
+					updatedStatus,
+				);
 
-			const result = await companyCollection.updateOne(
-				filter,
-				updatedStatus,
-			);
-
-			res.json(result);
-		});
+				res.json(result);
+			},
+		);
 
 		/* Plan Collection related APIs */
 		app.get("/api/plans", async (req, res) => {
