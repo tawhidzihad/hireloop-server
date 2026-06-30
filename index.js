@@ -87,7 +87,6 @@ async function run() {
 		/* ===================Jobs Related APIs==================*/
 		// Get all jobs by filtaring , pagenation, more query, &
 		app.get("/api/jobs", async (req, res) => {
-			console.log("server side query", req.query);
 			const query = {};
 
 			/* ============Job Filter & Search Related Query========= */
