@@ -24,7 +24,7 @@ const client = new MongoClient(uri, {
 
 async function run() {
 	try {
-		await client.connect();
+		// await client.connect();
 
 		// Database and data collections
 		const database = client.db("hireloop_db");
@@ -84,14 +84,69 @@ async function run() {
 			next();
 		};
 
-		/* Jobs Related APIs */
+		/* ===================Jobs Related APIs==================*/
+		// Get all jobs by filtaring , pagenation, more query, &
 		app.get("/api/jobs", async (req, res) => {
+			console.log("server side query", req.query);
 			const query = {};
+
+			/* ============Job Filter & Search Related Query========= */
+			if (req.query.search) {
+				query.$or = [
+					{ jobTitle: { $regex: req.query.search, $options: "i" } },
+					{
+						jobCategory: {
+							$regex: req.query.search,
+							$options: "i",
+						},
+					},
+					{
+						companyName: {
+							$regex: req.query.search,
+							$options: "i",
+						},
+					},
+				];
+			}
+
+			if (req.query.jobType) {
+				query.jobType = req.query.jobType;
+			}
+
+			if (req.query.jobCategory) {
+				query.jobCategory = req.query.jobCategory;
+			}
+
+			if (req.query.isRemote) {
+				query.isRemote = true;
+			}
+
+			/*===========Company Related Query===========*/
 			if (req.query.companyId) {
 				query.companyId = req.query.companyId;
 			}
 			if (req.query.status) {
 				query.status = req.query.status;
+			}
+
+			/* ==========pagenations===========*/
+			if (req.query.page) {
+				const page = req.query.page;
+				const perPage = req.query.perPage || 6;
+				const skipItems = (page - 1) * perPage;
+
+				const total = await jobsCollection.countDocuments(query);
+
+				const cursor = jobsCollection
+					.find(query)
+					.skip(skipItems)
+					.limit(perPage);
+
+				const jobs = await cursor.toArray();
+				return res.json({
+					total,
+					jobs,
+				});
 			}
 
 			const cursor = jobsCollection.find(query);
@@ -120,7 +175,7 @@ async function run() {
 			res.json(result);
 		});
 
-		/* Job Applications Related */
+		/*========================Job Applications Related======================*/
 		// Get applications data for seeker
 		app.get(
 			"/api/applications",
@@ -159,7 +214,7 @@ async function run() {
 			res.json(result);
 		});
 
-		/* Company related APIs */
+		/*===================Company related APIs====================================*/
 		// Get my company data for recruiter
 		app.get("/api/my/companies", async (req, res) => {
 			const query = {};
@@ -235,7 +290,7 @@ async function run() {
 			},
 		);
 
-		/* Plan Collection related APIs */
+		/*======================Plan Collection related APIs======================*/
 		app.get("/api/plans", async (req, res) => {
 			const query = {};
 			if (req.query.planId) {
@@ -245,7 +300,7 @@ async function run() {
 			res.json(result);
 		});
 
-		/* Subscription & Update User Plan related APIs */
+		/*====================Subscription & Update User Plan related APIs====================*/
 		app.post("/api/subscriptions", async (req, res) => {
 			const subscriptionData = req.body;
 			const subsNewData = {
@@ -270,11 +325,10 @@ async function run() {
 			res.json(updatePlanResult);
 		});
 
-		// Send a ping to confirm a successful connection
-		await client.db("admin").command({ ping: 1 });
-		console.log(
-			"Pinged your deployment. You successfully connected to MongoDB!",
-		);
+		// await client.db("admin").command({ ping: 1 });
+		// console.log(
+		// 	"Pinged your deployment. You successfully connected to MongoDB!",
+		// );
 	} finally {
 		// await client.close();
 	}
